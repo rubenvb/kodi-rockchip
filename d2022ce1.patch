@@ -1,0 +1,91 @@
+From d2022ce17fdc127eb418a70720897bf876489ea0 Mon Sep 17 00:00:00 2001
+From: Rudi Heitbaum <rudi@heitbaum.com>
+Date: Thu, 28 Dec 2023 06:29:00 +0000
+Subject: [PATCH] TagLibVFSStream: update function declarations to support
+ taglib-2.0
+
+ref:
+- https://github.com/taglib/taglib/commit/ca8c2e07ecae6c8c5bb1c47a1f11f5c87fbcb4c2
+
+long/ulong updated to offset_t/size_t in taglib/toolkit/tiostream.h
+
+Signed-off-by: Rudi Heitbaum <rudi@heitbaum.com>
+---
+ xbmc/music/tags/TagLibVFSStream.cpp |  9 +++++++++
+ xbmc/music/tags/TagLibVFSStream.h   | 11 +++++++++++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/xbmc/music/tags/TagLibVFSStream.cpp b/xbmc/music/tags/TagLibVFSStream.cpp
+index 1d2b454abbfe3..2008aba187e73 100644
+--- a/xbmc/music/tags/TagLibVFSStream.cpp
++++ b/xbmc/music/tags/TagLibVFSStream.cpp
+@@ -11,6 +11,7 @@
+ 
+ #include <limits.h>
+ 
++#include <taglib/taglib.h>
+ #include <taglib/tiostream.h>
+ 
+ using namespace XFILE;
+@@ -90,7 +91,11 @@ void TagLibVFSStream::writeBlock(const ByteVector &data)
+  * \note This method is slow since it requires rewriting all of the file
+  * after the insertion point.
+  */
++#if (TAGLIB_MAJOR_VERSION >= 2)
++void TagLibVFSStream::insert(const ByteVector& data, TagLib::offset_t start, size_t replace)
++#else
+ void TagLibVFSStream::insert(const ByteVector &data, TagLib::ulong start, TagLib::ulong replace)
++#endif
+ {
+   if (data.size() == replace)
+   {
+@@ -180,7 +185,11 @@ void TagLibVFSStream::insert(const ByteVector &data, TagLib::ulong start, TagLib
+  * \note This method is slow since it involves rewriting all of the file
+  * after the removed portion.
+  */
++#if (TAGLIB_MAJOR_VERSION >= 2)
++void TagLibVFSStream::removeBlock(TagLib::offset_t start, size_t length)
++#else
+ void TagLibVFSStream::removeBlock(TagLib::ulong start, TagLib::ulong length)
++#endif
+ {
+   TagLib::ulong bufferLength = bufferSize();
+ 
+diff --git a/xbmc/music/tags/TagLibVFSStream.h b/xbmc/music/tags/TagLibVFSStream.h
+index d56705535353c..e0030103a5767 100644
+--- a/xbmc/music/tags/TagLibVFSStream.h
++++ b/xbmc/music/tags/TagLibVFSStream.h
+@@ -10,6 +10,7 @@
+ 
+ #include "filesystem/File.h"
+ 
++#include <taglib/taglib.h>
+ #include <taglib/tiostream.h>
+ 
+ namespace MUSIC_INFO
+@@ -56,7 +57,13 @@ namespace MUSIC_INFO
+      * \note This method is slow since it requires rewriting all of the file
+      * after the insertion point.
+      */
++#if (TAGLIB_MAJOR_VERSION >= 2)
++    void insert(const TagLib::ByteVector& data,
++                TagLib::offset_t start = 0,
++                size_t replace = 0) override;
++#else
+     void insert(const TagLib::ByteVector &data, TagLib::ulong start = 0, TagLib::ulong replace = 0) override;
++#endif
+ 
+     /*!
+      * Removes a block of the file starting a \a start and continuing for
+@@ -65,7 +72,11 @@ namespace MUSIC_INFO
+      * \note This method is slow since it involves rewriting all of the file
+      * after the removed portion.
+      */
++#if (TAGLIB_MAJOR_VERSION >= 2)
++    void removeBlock(TagLib::offset_t start = 0, size_t length = 0) override;
++#else
+     void removeBlock(TagLib::ulong start = 0, TagLib::ulong length = 0) override;
++#endif
+ 
+     /*!
+      * Returns true if the file is read only (or if the file can not be opened).

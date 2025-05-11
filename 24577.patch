@@ -1,0 +1,189 @@
+From e43460c54a13b2dda68e9a905c8ddea848d800e5 Mon Sep 17 00:00:00 2001
+From: Rudi Heitbaum <rudi@heitbaum.com>
+Date: Thu, 25 Jan 2024 11:53:52 +0000
+Subject: [PATCH 1/2] TagLoaderTagLib: dont use deprecated integer types to
+ support taglib-20
+
+final release of taglib-2.0 removed deprecated unused types from taglib.
+
+ref:
+- https://github.com/taglib/taglib/commit/a08acdcf23c5d4ac4cb795f5edfdc539055138b7
+  - These integer types are deprecated. Do not use them.
+
+Signed-off-by: Rudi Heitbaum <rudi@heitbaum.com>
+---
+ xbmc/music/tags/TagLoaderTagLib.cpp | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/xbmc/music/tags/TagLoaderTagLib.cpp b/xbmc/music/tags/TagLoaderTagLib.cpp
+index c1b36318b2e0d..f4f676067a24c 100644
+--- a/xbmc/music/tags/TagLoaderTagLib.cpp
++++ b/xbmc/music/tags/TagLoaderTagLib.cpp
+@@ -472,7 +472,11 @@ bool CTagLoaderTagLib::ParseTag(ID3v2::Tag *id3v2, EmbeddedArt *art, MUSIC_INFO:
+     if (picture)
+     {
+       std::string  mime =            picture->mimeType().to8Bit(true);
++#if (TAGLIB_MAJOR_VERSION >= 2)
++      unsigned int size =            picture->picture().size();
++#else
+       TagLib::uint size =            picture->picture().size();
++#endif
+       tag.SetCoverArtInfo(size, mime);
+       if (art)
+         art->Set(reinterpret_cast<const uint8_t*>(picture->picture().data()), size, mime);
+@@ -789,7 +793,11 @@ bool CTagLoaderTagLib::ParseTag(Ogg::XiphComment *xiph, EmbeddedArt *art, CMusic
+       std::string mime = pictures[i].mimeType().toCString();
+       if (mime.compare(0, 6, "image/") != 0)
+         continue;
++#if (TAGLIB_MAJOR_VERSION >= 2)
++      unsigned int size =            pictures[i].data().size();
++#else
+       TagLib::uint size =            pictures[i].data().size();
++#endif
+       tag.SetCoverArtInfo(size, mime);
+       if (art)
+         art->Set(reinterpret_cast<const uint8_t*>(pictures[i].data().data()), size, mime);
+
+From 700bd7d0ad4f7e67685a4428c81bb5b9b52ba68c Mon Sep 17 00:00:00 2001
+From: Rudi Heitbaum <rudi@heitbaum.com>
+Date: Thu, 25 Jan 2024 11:21:57 +0000
+Subject: [PATCH 2/2] TagLibVFSStream: dont use deprecated integer types to
+ support taglib-20
+
+final release of taglib-2.0 removed deprecated unused types from taglib.
+
+ref:
+- https://github.com/taglib/taglib/commit/a08acdcf23c5d4ac4cb795f5edfdc539055138b7
+  - These integer types are deprecated. Do not use them.
+
+Signed-off-by: Rudi Heitbaum <rudi@heitbaum.com>
+---
+ xbmc/music/tags/TagLibVFSStream.cpp | 36 +++++++++++++++++++++++++++++
+ xbmc/music/tags/TagLibVFSStream.h   |  8 +++++++
+ 2 files changed, 44 insertions(+)
+
+diff --git a/xbmc/music/tags/TagLibVFSStream.cpp b/xbmc/music/tags/TagLibVFSStream.cpp
+index 2008aba187e73..c5f9c2473fe13 100644
+--- a/xbmc/music/tags/TagLibVFSStream.cpp
++++ b/xbmc/music/tags/TagLibVFSStream.cpp
+@@ -58,9 +58,17 @@ FileName TagLibVFSStream::name() const
+ /*!
+  * Reads a block of size \a length at the current get pointer.
+  */
++#if (TAGLIB_MAJOR_VERSION >= 2)
++ByteVector TagLibVFSStream::readBlock(unsigned long length)
++#else
+ ByteVector TagLibVFSStream::readBlock(TagLib::ulong length)
++#endif
+ {
++#if (TAGLIB_MAJOR_VERSION >= 2)
++  ByteVector byteVector(static_cast<unsigned int>(length));
++#else
+   ByteVector byteVector(static_cast<TagLib::uint>(length));
++#endif
+   ssize_t read = m_file.Read(byteVector.data(), length);
+   if (read > 0)
+     byteVector.resize(read);
+@@ -119,7 +127,11 @@ void TagLibVFSStream::insert(const ByteVector &data, TagLib::ulong start, TagLib
+   // First, make sure that we're working with a buffer that is longer than
+   // the *difference* in the tag sizes.  We want to avoid overwriting parts
+   // that aren't yet in memory, so this is necessary.
++#if (TAGLIB_MAJOR_VERSION >= 2)
++  unsigned long bufferLength = bufferSize();
++#else
+   TagLib::ulong bufferLength = bufferSize();
++#endif
+ 
+   while (data.size() - replace > bufferLength)
+     bufferLength += bufferSize();
+@@ -128,7 +140,11 @@ void TagLibVFSStream::insert(const ByteVector &data, TagLib::ulong start, TagLib
+   long readPosition = start + replace;
+   long writePosition = start;
+   ByteVector buffer;
++#if (TAGLIB_MAJOR_VERSION >= 2)
++  ByteVector aboutToOverwrite(static_cast<unsigned int>(bufferLength));
++#else
+   ByteVector aboutToOverwrite(static_cast<TagLib::uint>(bufferLength));
++#endif
+ 
+   // This is basically a special case of the loop below.  Here we're just
+   // doing the same steps as below, but since we aren't using the same buffer
+@@ -163,7 +179,11 @@ void TagLibVFSStream::insert(const ByteVector &data, TagLib::ulong start, TagLib
+ 
+     // Check to see if we just read the last block.  We need to call clear()
+     // if we did so that the last write succeeds.
++#if (TAGLIB_MAJOR_VERSION >= 2)
++    if (static_cast<unsigned long>(bytesRead) < bufferLength)
++#else
+     if (TagLib::ulong(bytesRead) < bufferLength)
++#endif
+       clear();
+ 
+     // Seek to the write position and write our buffer.  Increment the
+@@ -191,14 +211,26 @@ void TagLibVFSStream::removeBlock(TagLib::offset_t start, size_t length)
+ void TagLibVFSStream::removeBlock(TagLib::ulong start, TagLib::ulong length)
+ #endif
+ {
++#if (TAGLIB_MAJOR_VERSION >= 2)
++  unsigned long bufferLength = bufferSize();
++#else
+   TagLib::ulong bufferLength = bufferSize();
++#endif
+ 
+   long readPosition = start + length;
+   long writePosition = start;
+ 
++#if (TAGLIB_MAJOR_VERSION >= 2)
++  ByteVector buffer(static_cast<unsigned int>(bufferLength));
++#else
+   ByteVector buffer(static_cast<TagLib::uint>(bufferLength));
++#endif
+ 
++#if (TAGLIB_MAJOR_VERSION >= 2)
++  unsigned long bytesRead = 1;
++#else
+   TagLib::ulong bytesRead = 1;
++#endif
+ 
+   while(bytesRead != 0)
+   {
+@@ -207,7 +239,11 @@ void TagLibVFSStream::removeBlock(TagLib::ulong start, TagLib::ulong length)
+     if (read < 0)
+       return;// explicit error
+ 
++#if (TAGLIB_MAJOR_VERSION >= 2)
++    bytesRead = static_cast<unsigned long>(read);
++#else
+     bytesRead = static_cast<TagLib::ulong>(read);
++#endif
+     readPosition += bytesRead;
+ 
+     // Check to see if we just read the last block.  We need to call clear()
+diff --git a/xbmc/music/tags/TagLibVFSStream.h b/xbmc/music/tags/TagLibVFSStream.h
+index e0030103a5767..2302c04dd92bd 100644
+--- a/xbmc/music/tags/TagLibVFSStream.h
++++ b/xbmc/music/tags/TagLibVFSStream.h
+@@ -37,7 +37,11 @@ namespace MUSIC_INFO
+     /*!
+      * Reads a block of size \a length at the current get pointer.
+      */
++#if (TAGLIB_MAJOR_VERSION >= 2)
++    TagLib::ByteVector readBlock(unsigned long length) override;
++#else
+     TagLib::ByteVector readBlock(TagLib::ulong length) override;
++#endif
+ 
+     /*!
+      * Attempts to write the block \a data at the current get pointer.  If the
+@@ -121,7 +125,11 @@ namespace MUSIC_INFO
+     /*!
+      * Returns the buffer size that is used for internal buffering.
+      */
++#if (TAGLIB_MAJOR_VERSION >= 2)
++    static unsigned int bufferSize() { return 1024; }
++#else
+     static TagLib::uint bufferSize() { return 1024; }
++#endif
+ 
+   private:
+     std::string   m_strFileName;

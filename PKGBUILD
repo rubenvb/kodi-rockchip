@@ -24,7 +24,7 @@ pkgname=(
   'kodi-eventclients' 'kodi-tools-texturepacker' 'kodi-dev'
 )
 pkgver=21.2
-pkgrel=1
+pkgrel=4
 arch=('x86_64' 'aarch64' 'armv7h')
 url="https://kodi.tv"
 license=('GPL2')
@@ -86,7 +86,11 @@ source=(
   "0005-SetVideoInterlaced-Set-and-unset-deinterlace-method-.patch"
   "0006-DVDVideoCodecDRMPRIME-Close-deinterlace-filter-on-er.patch"
   "0007-DVDVideoCodecDRMPRIME-Fix-missing-flush-after-eof.patch"
+  #"0010-kodi-ffmpeg-7.1.patch"
   "000-temp-revert-fences.patch"
+  #"000-actual-flickering-fix.patch"
+  "fix-libnfs-6-compatibility.patch"
+  "fix-build-with-pipewire-1.4.patch"
 )
 noextract=(
   "$pkgbase-libdvdcss-$_libdvdcss_version.tar.gz"
@@ -117,7 +121,9 @@ md5sums=('ba191fcbd49e19af50e5c56786bc9bf4'
          '395e4211760a01fc9d788ef79b80dbe1'
          '50c8538297808b11a8c38807bbc4576e'
          '969ee726ef461a0258bfc372c00a8449'
-         '272c86132014e644f9a6bc9354770343')
+         '495f85b357f1f675f995c8db828ff2c7'
+         '3d120378e598659e6c918b3882d261ff'
+         'd09af8cb649eed7a66c2a26e2c03749e')
 
 prepare() {
   [[ -d kodi-build ]] && rm -rf kodi-build
@@ -138,7 +144,11 @@ prepare() {
   patch -p1 -i $srcdir/0005-SetVideoInterlaced-Set-and-unset-deinterlace-method-.patch
   patch -p1 -i $srcdir/0006-DVDVideoCodecDRMPRIME-Close-deinterlace-filter-on-er.patch
   patch -p1 -i $srcdir/0007-DVDVideoCodecDRMPRIME-Fix-missing-flush-after-eof.patch
+  #patch -p1 -i $srcdir/0010-kodi-ffmpeg-7.1.patch
   patch -p1 -i $srcdir/000-temp-revert-fences.patch
+#  patch -p1 -i $srcdir/000-actual-flickering-fix.patch
+  patch -p1 -i $srcdir/fix-libnfs-6-compatibility.patch
+  patch -p1 -i $srcdir/fix-build-with-pipewire-1.4.patch
 }
 
 build() {

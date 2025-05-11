@@ -1,0 +1,125 @@
+From 74b5d65da568d43b86a55de9826f7697fb89f8fa Mon Sep 17 00:00:00 2001
+From: sarbes <sarbes@kodi.tv>
+Date: Sat, 30 Nov 2024 17:19:15 +0100
+Subject: [PATCH 1/2] Fix rendering for EGL_KHR_partial_update enabled
+ platforms
+
+---
+ xbmc/guilib/GUIWindowManager.cpp | 4 +++-
+ xbmc/utils/EGLUtils.cpp          | 9 ++++++---
+ 2 files changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/xbmc/guilib/GUIWindowManager.cpp b/xbmc/guilib/GUIWindowManager.cpp
+index 8d7802e4b672e..f3ead115b7c7d 100644
+--- a/xbmc/guilib/GUIWindowManager.cpp
++++ b/xbmc/guilib/GUIWindowManager.cpp
+@@ -1367,7 +1367,6 @@ bool CGUIWindowManager::Render()
+     m_tracker.CleanMarkedRegions(10);
+ 
+   CDirtyRegionList dirtyRegions = m_tracker.GetDirtyRegions();
+-  CServiceBroker::GetWinSystem()->SetDirtyRegions(dirtyRegions);
+ 
+   bool hasRendered = false;
+   // If we visualize the regions we will always render the entire viewport
+@@ -1394,6 +1393,9 @@ bool CGUIWindowManager::Render()
+       if (i.IsEmpty())
+         continue;
+ 
++      if (!hasRendered)
++        CServiceBroker::GetWinSystem()->SetDirtyRegions(dirtyRegions);
++
+       CServiceBroker::GetWinSystem()->GetGfxContext().SetScissors(i);
+       RenderPass();
+       hasRendered = true;
+diff --git a/xbmc/utils/EGLUtils.cpp b/xbmc/utils/EGLUtils.cpp
+index 01867354cf363..d03a108217067 100644
+--- a/xbmc/utils/EGLUtils.cpp
++++ b/xbmc/utils/EGLUtils.cpp
+@@ -667,13 +667,16 @@ void CEGLContextUtils::SetDamagedRegions(const CDirtyRegionList& dirtyRegions)
+   }
+   else
+   {
+-    EGLint height = eglQuerySurface(m_eglDisplay, m_eglSurface, EGL_HEIGHT, &height);
++    EGLint height = 1080;
++    eglQuerySurface(m_eglDisplay, m_eglSurface, EGL_HEIGHT, &height);
+     std::vector<Rect> rects;
+     rects.reserve(dirtyRegions.size());
+     for (const auto& region : dirtyRegions)
+     {
+-      rects.push_back({static_cast<EGLint>(region.x1), static_cast<EGLint>(height - region.y2),
+-                       static_cast<EGLint>(region.Width()), static_cast<EGLint>(region.Height())});
++      rects.push_back({static_cast<EGLint>(std::round(region.x1)),
++                       static_cast<EGLint>(std::round(height - region.y2)),
++                       static_cast<EGLint>(std::round(region.Width())),
++                       static_cast<EGLint>(std::round(region.Height()))});
+     }
+     m_eglSetDamageRegionKHR(m_eglDisplay, m_eglSurface, reinterpret_cast<EGLint*>(rects.data()),
+                             rects.size());
+
+From 3df51c99e6d38e843c297e1e17bbd6f9b64a0af1 Mon Sep 17 00:00:00 2001
+From: sarbes <sarbes@kodi.tv>
+Date: Thu, 5 Dec 2024 18:13:54 +0100
+Subject: [PATCH 2/2] EGL error logging
+
+---
+ xbmc/utils/EGLUtils.cpp | 21 +++++++++++++++++----
+ xbmc/utils/EGLUtils.h   |  1 +
+ 2 files changed, 18 insertions(+), 4 deletions(-)
+
+diff --git a/xbmc/utils/EGLUtils.cpp b/xbmc/utils/EGLUtils.cpp
+index d03a108217067..b0cc32b597948 100644
+--- a/xbmc/utils/EGLUtils.cpp
++++ b/xbmc/utils/EGLUtils.cpp
+@@ -659,16 +659,23 @@ void CEGLContextUtils::SetDamagedRegions(const CDirtyRegionList& dirtyRegions)
+     return;
+ 
+   using Rect = std::array<EGLint, 4>;
++  EGLBoolean damageRegionsResult = EGL_FALSE;
+   if (dirtyRegions.empty())
+   {
+     // add a single (empty) entry, otherwise the whole frame gets rendered
+     static Rect zeroRect{};
+-    m_eglSetDamageRegionKHR(m_eglDisplay, m_eglSurface, zeroRect.data(), 1);
++    damageRegionsResult = m_eglSetDamageRegionKHR(m_eglDisplay, m_eglSurface, zeroRect.data(), 1);
+   }
+   else
+   {
+     EGLint height = 1080;
+-    eglQuerySurface(m_eglDisplay, m_eglSurface, EGL_HEIGHT, &height);
++    if (eglQuerySurface(m_eglDisplay, m_eglSurface, EGL_HEIGHT, &height) != EGL_TRUE &&
++        !m_damageRegionError)
++    {
++      CLog::LogF(LOGERROR, "eglQuerySurface failed ({:#x})", eglGetError());
++      m_damageRegionError = true;
++    }
++
+     std::vector<Rect> rects;
+     rects.reserve(dirtyRegions.size());
+     for (const auto& region : dirtyRegions)
+@@ -678,8 +685,14 @@ void CEGLContextUtils::SetDamagedRegions(const CDirtyRegionList& dirtyRegions)
+                        static_cast<EGLint>(std::round(region.Width())),
+                        static_cast<EGLint>(std::round(region.Height()))});
+     }
+-    m_eglSetDamageRegionKHR(m_eglDisplay, m_eglSurface, reinterpret_cast<EGLint*>(rects.data()),
+-                            rects.size());
++    damageRegionsResult = m_eglSetDamageRegionKHR(
++        m_eglDisplay, m_eglSurface, reinterpret_cast<EGLint*>(rects.data()), rects.size());
++  }
++
++  if (damageRegionsResult != EGL_TRUE && !m_damageRegionError)
++  {
++    CLog::LogF(LOGERROR, "Setting damaged region failed ({:#x})", eglGetError());
++    m_damageRegionError = true;
+   }
+ }
+ 
+diff --git a/xbmc/utils/EGLUtils.h b/xbmc/utils/EGLUtils.h
+index 2fda9f690f2f3..9f6c3c19cd869 100644
+--- a/xbmc/utils/EGLUtils.h
++++ b/xbmc/utils/EGLUtils.h
+@@ -246,4 +246,5 @@ class CEGLContextUtils final
+   PFNEGLSETDAMAGEREGIONKHRPROC m_eglSetDamageRegionKHR{nullptr};
+   bool m_partialUpdateSupport{false};
+   bool m_bufferAgeSupport{false};
++  bool m_damageRegionError{false};
+ };
